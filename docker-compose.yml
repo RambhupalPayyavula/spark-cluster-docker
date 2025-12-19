@@ -11,6 +11,9 @@ services:
       - 8888:8888
     volumes:
       - ./shared-workspace:/opt/workspace
+      - ./hadoop/config:/opt/hadoop/etc/hadoop
+    environment:
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
   jupyter-spark-master:
     image: jupyter-spark-master
     container_name: jupyter-spark-master
@@ -20,16 +23,21 @@ services:
       - 7077:7077
     volumes:
       - ./shared-workspace:/opt/workspace
+      - ./hadoop/config:/opt/hadoop/etc/hadoop
+    environment:
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
   jupyter-spark-worker-1:
     image: jupyter-spark-worker
     container_name: jupyter-spark-worker-1
     environment:
       - SPARK_WORKER_CORES=2
       - SPARK_WORKER_MEMORY=1g
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
     ports:
       - 8081:8081
     volumes:
       - ./shared-workspace:/opt/workspace
+      - ./hadoop/config:/opt/hadoop/etc/hadoop
     depends_on:
       - jupyter-spark-master
   jupyter-spark-worker-2:
@@ -38,20 +46,108 @@ services:
     environment:
       - SPARK_WORKER_CORES=2
       - SPARK_WORKER_MEMORY=1g
+      - HADOOP_CONF_DIR=/opt/hadoop/etc/hadoop
     ports:
       - 8082:8081
     volumes:
-      - shared-workspace:/opt/workspace
+      - ./shared-workspace:/opt/workspace
+      - ./hadoop/config:/opt/hadoop/etc/hadoop
     depends_on:
       - jupyter-spark-master
   postgres:
-    image: postgres:latest
+    image: postgres:14-alpine
     container_name: postgres
     environment:
-      - "TZ=Europe/Amsterdam"
-      - "POSTGRES_USER=docker"
-      - "POSTGRES_PASSWORD=docker"
+      - POSTGRES_USER=docker
+      - POSTGRES_PASSWORD=docker
+      - POSTGRES_DB=spark_labs
     ports:
       - "5432:5432"
     volumes:
-      - "./shared-workspace/sql:/docker-entrypoint-initdb.d"
+      - ./shared-workspace/sql:/docker-entrypoint-initdb.d
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "6379:6379"
+  hbase:
+    build:
+      context: ./hbase
+      dockerfile: Dockerfile
+    container_name: hbase
+    ports:
+      - "2181:2181"
+      - "8090:8080"
+      - "8085:8085"
+      - "9090:9090"
+      - "9095:9095"
+      - "16000:16000"
+      - "16010:16010"
+      - "16020:16020"
+      - "16030:16030"
+    environment:
+      - HBASE_MANAGES_ZK=true
+
+  namenode:
+    build:
+      context: ./hadoop
+      dockerfile: Dockerfile
+    container_name: namenode
+    command: ["namenode"]
+    ports:
+      - "9870:9870"
+      - "9000:9000"
+    volumes:
+      - ./hadoop/config:/opt/hadoop/etc/hadoop
+      - ./hadoop/data/nameNode:/opt/hadoop/data/nameNode
+    env_file:
+      - ./hadoop/hadoop.env
+
+  datanode:
+    build:
+      context: ./hadoop
+      dockerfile: Dockerfile
+    container_name: datanode
+    command: ["datanode"]
+    volumes:
+      - ./hadoop/config:/opt/hadoop/etc/hadoop
+      - ./hadoop/data/dataNode:/opt/hadoop/data/dataNode
+    env_file:
+      - ./hadoop/hadoop.env
+    depends_on:
+      - namenode
+
+  resourcemanager:
+    build:
+      context: ./hadoop
+      dockerfile: Dockerfile
+    container_name: resourcemanager
+    command: ["resourcemanager"]
+    ports:
+      - "8088:8088"
+    volumes:
+      - ./hadoop/config:/opt/hadoop/etc/hadoop
+    env_file:
+      - ./hadoop/hadoop.env
+    depends_on:
+      - namenode
+      - datanode
+
+  nodemanager:
+    build:
+      context: ./hadoop
+      dockerfile: Dockerfile
+    container_name: nodemanager
+    command: ["nodemanager"]
+    ports:
+      - "8042:8042"
+    volumes:
+      - ./hadoop/config:/opt/hadoop/etc/hadoop
+    env_file:
+      - ./hadoop/hadoop.env
+    depends_on:
+      - namenode
+      - datanode
+      - resourcemanager
+
+

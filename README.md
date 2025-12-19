@@ -1,99 +1,134 @@
-# Spark Cluster Docker
+# Spark Development Cluster
 
-Powered by [Rock the JVM](https://rockthejvm.com)
+## 1. Quick Start
 
-This repository contains the Docker files to create a Spark cluster with a JupyterLab interface. This cluster is used as a teaching tool for the Rock the JVM online courses and live training sessions on Apache Spark:
+### Prerequisites
+- Docker Desktop (Allocated at least 8GB RAM, 4 CPUs)
+- Git
 
-- [Spark Essentials](https://rockthejvm.com/p/spark-essentials)
-- [Spark Optimization](https://rockthejvm.com/p/spark-optimization)
-- [Spark Performance Tuning](https://rockthejvm.com/p/spark-performance-tuning)
-- plus corporate training sessions on the above
-
-The cluster is set up for Spark 3.0.0.
-
-## How to Install
-
-As prerequisite, you need a Docker installation for your OS. This repository has been tested on Linux and macOS, but with a Bash interpreter it can also work on Windows as it is.
-
-Then, you need to build the Docker images. This repository contains image definitions for
-
-- a JupyterLab interface
-- a Spark master node
-- a Spark worker node (of which we'll instantiate two, each carrying 2 vCores and 1GB memory)
-
-To build the images, run the build script from the root directory:
-
+### Start the Cluster
+Run the following command in the project root:
+```bash
+docker-compose up -d
 ```
-./build-images.sh
+*Note: The first time you run this, it will take a few minutes to build the images and download dependencies.*
+
+### Stop the Cluster
+```bash
+docker-compose down
 ```
+*Note: This preserves data in volumes. To delete all data, use `docker-compose down -v`.*
 
-After the command is finished, still in the root directory, run
+---
 
-```
-docker-compose up
-```
+## 2. Architecture & Access
 
-That's it!
+| Service | Description | URL / Port |
+| :--- | :--- | :--- |
+| **JupyterLab** | Primary Development Interface | [http://localhost:8888](http://localhost:8888) |
+| **Spark Master** | Spark Standalone UI | [http://localhost:8080](http://localhost:8080) |
+| **HDFS Namenode** | Browse Hadoop File System | [http://localhost:9870](http://localhost:9870) |
+| **YARN ResourceManager** | Monitor YARN Applications | [http://localhost:8088](http://localhost:8088) |
+| **HBase Master** | HBase Management UI | [http://localhost:16010](http://localhost:16010) |
+| **HBase REST** | HBase REST API | [http://localhost:8090](http://localhost:8090) |
+| **Postgres** | Relational Database | Port `5432` |
+| **Redis** | Key-Value Store | Port `6379` |
 
-## Important Links
+**Authentication**:
+- **JupyterLab**: Password is not set (TOKEN is empty).
+- **Postgres**: User: `docker`, Password: `docker`, DB: `spark_labs`.
 
-- The main JupyterLab interface: http://localhost:8888
-- The Spark cluster UI (master node): http://localhost:8080
-- The Spark cluster UI (worker node): http://localhost:8081 and http://localhost:8082
-- The Spark application web UI (active during a Spark Shell): http://localhost:4040
+---
 
-## Other Tools
+## 3. Developing with Spark
 
-To kill the cluster, hit Ctrl-C in the terminal running it, or run this command from another terminal in the root directory:
+### 3.1 JupyterLab Environment
+- **Persistent Data**: Save your notebooks and data in the `work` folder inside JupyterLab (mapped to `./shared-workspace` on your host).
+- **Python**: Version 3.10 is installed.
+- **Installing Packages**: Open a terminal in JupyterLab and run `pip install <package_name>`.
 
-```
-docker-compose kill
-```
+### 3.2 Connecting to Spark
+The Docker environment comes with a pre-configured `SparkSession`. You can initialize it in two modes:
 
-To remove the containers altogether, run in the root directory
+#### Mode A: Spark Standalone (Default for simple tests)
+Runs on the standalone Spark cluster containers.
+```python
+from pyspark.sql import SparkSession
 
-```
-docker-compose rm
-```
-
-To start a (Scala) Spark Shell, run
-
-```
-./start-spark-shell.sh
-```
-
-To start a PySpark shell, run
-
-```
-./start-pyspark.sh
+spark = SparkSession.builder \
+    .appName("MyStandaloneApp") \
+    .master("spark://jupyter-spark-master:7077") \
+    .getOrCreate()
 ```
 
-To start a Spark SQL shell, run
+#### Mode B: Spark on YARN (Production simulation)
+Submits the application to the YARN scheduler.
+```python
+from pyspark.sql import SparkSession
 
-```
-./start-spark-sql.sh
-```
-
-## PostgreSQL
-
-This setup also has a SQL database (PostgreSQL) for students to access from Apache Spark. The database comes preloaded with a smaller version of the classical fictitious "employees" database.
-
-To open a PSQL shell and manage the database manually, run the helper script
-
-```
-./psql.sh
+spark = SparkSession.builder \
+    .appName("MyYarnApp") \
+    .master("yarn") \
+    .config("spark.deploy.mode", "client") \
+    .getOrCreate()
 ```
 
-## How to upload data to the Spark cluster
+### 3.3 Using Delta Lake
+Delta Lake libraries are pre-loaded.
+```python
+# Write
+df.write.format("delta").save("/opt/workspace/my-delta-table")
 
-You have two options:
+# Read
+df = spark.read.format("delta").load("/opt/workspace/my-delta-table")
+```
 
-1. Use the JupyterLab upload interface while it's active.
-2. Copy your data to `shared-workspace` &mdash; the directory is auto-mounted on all the containers.
+---
 
-## How to port your notebooks to another Jupyter instance
+## 4. Working with Data
 
-Similar options:
+### 4.1 HDFS (Hadoop Distributed File System)
+Access via `hdfs` scheme in Spark or CLI.
+- **Spark**: `spark.read.csv("hdfs://namenode:9000/path/to/data")`
+- **CLI**: Open a terminal in JupyterLab:
+  ```bash
+  # List files
+  hdfs dfs -ls /
+  
+  # Create directory
+  hdfs dfs -mkdir /my-data
+  
+  # Upload local file to HDFS
+  hdfs dfs -put /opt/workspace/my-file.csv /my-data/
+  ```
 
-1. Use the JupyterLab interface to download your notebooks as `.ipynb` files.
-2. Copy the `.ipynb` files directly from the `shared-workspace` directory: everything you save will be immediately visible there.
+### 4.2 Postgres
+Connect using JDBC. Drivers are pre-installed.
+```python
+df = spark.read \
+    .format("jdbc") \
+    .option("url", "jdbc:postgresql://postgres:5432/spark_labs") \
+    .option("dbtable", "employees") \
+    .option("user", "docker") \
+    .option("password", "docker") \
+    .load()
+```
+
+### 4.3 Redis
+Access using the `redis` python library (install via pip first) or Spark-Redis connector (if configured).
+```python
+import redis
+r = redis.Redis(host='redis', port=6379, db=0)
+r.set('key', 'value')
+```
+
+---
+
+## 5. Troubleshooting
+
+- **"Safe Mode" in HDFS**: If HDFS is in safe mode, you cannot write to it. It usually turns off automatically after startup. To force leave:
+  ```bash
+  docker exec namenode hdfs dfsadmin -safemode leave
+  ```
+- **Spark UI (4040) Not Accessible**: The port 4040 is only open on your localhost *while* a SparkContext is active in your notebook/script.
+- **Resource Issues**: If containers crash, check your Docker Desktop resource allocation. This stack requires at least 6-8GB of RAM.

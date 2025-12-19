@@ -1,14 +1,12 @@
-ARG debian_buster_image_tag=8-jre-slim
-FROM openjdk:${debian_buster_image_tag}
+FROM python:3.10-slim-bullseye
 
-# -- Layer: OS + Python 3.7
+# -- Layer: OS + Java 11
 
 ARG shared_workspace=/opt/workspace
 
 RUN mkdir -p ${shared_workspace} && \
     apt-get update -y && \
-    apt-get install -y python3 && \
-    ln -s /usr/bin/python3 /usr/bin/python && \
+    apt-get install -y openjdk-11-jre-headless procps && \
     rm -rf /var/lib/apt/lists/*
 
 ENV SHARED_WORKSPACE=${shared_workspace}

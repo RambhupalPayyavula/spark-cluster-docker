@@ -82,6 +82,14 @@ By default, Oracle blocks all ports except SSH (22). You need to open ports for 
     ./setup.sh
     ```
 
+    *Option C: High Performance Setup (For 24GB RAM Instances)*
+    Use this script to automatically configure Spark to use 8GB+ RAM (4GB per worker).
+    ```bash
+    cd spark-cluster-docker/deployment/oracle-cloud
+    chmod +x setup_high_performance.sh
+    ./setup_high_performance.sh
+    ```
+
 4.  **Wait for Build**: The script will install Docker, pull images, and start the cluster. This takes ~5-10 minutes.
 
 ---
